@@ -100,22 +100,33 @@ For example, one of the buckets in the "GROUND" bucket alignment is represented 
 ```
 
 ## Mathematical Description
+
 ![frames_illustration](https://github.com/amashry/nist-autonomous-inspection/assets/98168605/e53c3487-fe0f-4236-94f1-3c9a820fd357)
 *Figure 2: Illustration of the different reference frames. (figure by [Zach Bortoff](https://github.com/zborffs))*
 
-To ensure the drone can navigate accurately around the buckets, the desired pose of the drone is calculated with respect to the AprilTag's frame (which is obtained from the AprilTag detection library). This pose is transformed to the drone's body frame using the equation:
+This project utilizes the concept of homogeneous transformations to represent the drone's pose, the AprilTag's pose, and the static transformation between the drone’s camera and body frames. A homogeneous transformation is a 4x4 matrix that encodes a 3D rotation and translation. It allows complex transformations such as rotations and translations to be performed using matrix multiplication. In our context, these transformations represent poses in different frames of reference:
 
-```
-pose_body = pose_tag_inverse * pose_desired_tag
-```
+- ${}^{I}H^{B}$: The drone's estimate of its own pose relative to the local inertial frame. It is an output of the drone's internal VIO system and changes as the drone moves.
+- ${}^{C}H^{A}$: The drone's perception of the AprilTag pose in the camera frame. This pose estimate is obtained by getting subscribing to the ROS topic being published by the tag_detection ROS package, which gives the tag_pose in the camera frame. 
+- ${}^{B}H^{C}$: The static transformation between the drone’s body frame and camera frame. This is a fixed transform because the camera is rigidly attached to the drone at a 45 degrees downward tilt.
 
-Finally, the pose in the body frame is transformed to the inertial frame (earth-fixed frame) by multiplying it with the drone's current pose in the inertial frame:
+To compute the pose of the AprilTag in the local inertial frame, we chain these transformations together. Chaining involves multiplying these transformations in the order of frames from target to source:
 
-```
-pose_inertial = pose_body * pose_current_inertial
-```
+$${}^{I}H^{A} = {}^{I}H^{B} \ \ {}^{B}H^{C} \ \ {}^{C}H^{A}$$
 
-The pose in the inertial frame is then published and used by the PX4 autopilot for navigation.
+This operation effectively maps the pose of the AprilTag from the camera frame to the local inertial frame, considering the drone's pose and the fixed camera-body transformation.
+
+The `generate_waypoints` program simplifies this procedure by transforming the AprilTag’s pose from the camera frame directly to the drone’s body-frame. As mentioned earlier, this program is used to generate the desired offsets for the drone to be able to see inside the buckets. 
+
+$${}^{B}H^{A} = {}^{B}H^{C} \ \ {}^{C}H^{A}$$
+
+For each detected AprilTag, a corresponding JSON file provides the offset configurations between the AprilTag and a desired drone pose ${}^{O}H^{A}$. This offset is crucial for determining the drone's target position and is incorporated into the computation of the **published** desired drone pose in the inertial frame:
+
+$${}^{I}H^{O} = {}^{I}H^{B} \ \ {}^{B}H^{C} \ \ {}^{C}H^{A} \ \ ({}^{O}H^{A})^{-1}$$
+
+The computed ${}^{I}H^{O}$ represents the desired drone pose in the inertial frame, with ${}^{O}H^{A}$ as the desired offset from the detected AprilTag.
+
+The translational components of ${}^{I}H^{O}$ are published to the rostopic _“/mavros/setpoint_raw/local”_, guiding the drone’s autopilot to the target position. The orientation change, specifically the yaw difference between the drone's current pose ${}^{I}H^{B}$ and the desired pose ${}^{I}H^{O}$, is computed using the function `determine_yaw_rate` in `utils.cpp`. This calculated yaw rate is used to steer the drone towards the desired pose while maintaining the correct orientation.
 
 ## Demonstration Video
 
