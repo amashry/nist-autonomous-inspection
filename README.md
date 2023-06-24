@@ -130,7 +130,8 @@ The translational components of ${}^{I}H^{O}$ are published to the rostopic _“
 
 ## Demonstration Video
 
-![DEMO VIDEO](https://link-to-your-demo-video.png)
+https://github.com/amashry/nist-autonomous-inspection/assets/98168605/b1151bd4-eadf-46df-82b4-0116a37cdbee
+
 
 *Figure 3: Demonstration video of the autonomous inspection of the "GROUND" bucket alignment by the drone.*
 
