@@ -1,8 +1,7 @@
 # Autonomous Drone Inspection of NIST Buckets
 Autonomous search, inspection and detection of National Institute of Standards and Technology (NIST) buckets indoors using ModalAI's VOXL M500 drone.
 
-![BUCKET ALIGNMENT](https://link-to-your-bucket-alignment-image.png)
-
+![GROUND_alignment_apriltag](https://github.com/amashry/nist-autonomous-inspection/assets/98168605/37931dee-5e8d-4bd7-ab9d-2cd8cfe3c257)
 *Figure 1: Illustration of the GROUND bucket alignment.*
 
 ## Overview
@@ -101,10 +100,8 @@ For example, one of the buckets in the "GROUND" bucket alignment is represented 
 ```
 
 ## Mathematical Description
-
-![TRANSFORMATION FRAMES](https://link-to-your-transformation-frames-image.png)
-
-*Figure 2: Illustration of the different reference frames.*
+![frames_illustration](https://github.com/amashry/nist-autonomous-inspection/assets/98168605/e53c3487-fe0f-4236-94f1-3c9a820fd357)
+*Figure 2: Illustration of the different reference frames. (figure by [Zach Bortoff](https://github.com/zborffs))*
 
 To ensure the drone can navigate accurately around the buckets, the desired pose of the drone is calculated with respect to the AprilTag's frame (which is obtained from the AprilTag detection library). This pose is transformed to the drone's body frame using the equation:
 
