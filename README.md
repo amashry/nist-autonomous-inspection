@@ -1,12 +1,12 @@
 # Autonomous Drone Inspection of NIST Buckets
-Autonomous search, inspection and detection of National Institute of Standards and Technology (NIST) buckets indoors using voxl m500 drone.
+Autonomous search, inspection and detection of National Institute of Standards and Technology (NIST) buckets indoors using ModalAI's VOXL M500 drone.
 
 ![BUCKET ALIGNMENT](https://link-to-your-bucket-alignment-image.png)
 
 *Figure 1: Illustration of the GROUND bucket alignment.*
 
 ## Overview
-This project employs a drone to autonomously inspect buckets in an unknown environment. The buckets are organized in various alignments, each represented by a unique AprilTag. The drone searches a predefined area of interest and upon detecting an AprilTag, it loads the inspection routine corresponding to that tag's bucket alignment. During inspection, the drone utilizes a custom YOLOv5 model for detecting what's inside the buckets.
+This project employs a drone to autonomously inspect buckets in an unknown environment. The buckets are organized in various alignments, each represented by a unique AprilTag. The drone searches a predefined area of interest and upon detecting an AprilTag, it loads the inspection routine corresponding to that tag's bucket alignment. During inspection, the drone utilizes a [custom YOLOv5 model running on TFLITE server](https://github.com/amashry/CustomYOLOv5-NIST-Buckets-VOXL-tflite) onboard on the drone for detecting what's inside the buckets. 
 
 ## Introduction
 This project's goal was to create software that uses a drone's onboard camera to localize a bucket configuration representing indoor debris in a disaster scenario, aiming to automate the task of a human pilot navigating around these obstacles. By using AprilTag, we simplified the complex task of debris detection into detecting and localizing an AprilTag on the bucket configuration. The drone was then instructed to move to certain predefined poses where its tracking camera could look into the buckets.
@@ -17,9 +17,45 @@ By chaining several homogeneous transformations, we obtained the desired pose of
 
 This project is primarily built around the ROS (Robot Operating System) framework, and uses MAVROS for interfacing with the PX4 autopilot. The inspection routines are defined as a series of waypoints and movements around the bucket alignments.
 
-## Getting Started
+## Prerequisites and Dependencies
 
-To run the project, clone the repository, navigate to the root of the workspace and build the packages using `catkin_make`. Then, source the workspace's setup file and launch the project using the launch file. 
+This project depends on a number of libraries and frameworks:
+
+1. ROS (Robot Operating System): It is the main framework that ties everything together. ROS Melodic was used for this project, but other versions should also work.
+2. MAVROS: This is a ROS package that provides a bridge between ROS and the drone's autopilot. It allows us to send commands to the drone and receive telemetry data from it using ROS.
+3. Eigen: This is a high-level C++ library for linear algebra, matrix and vector operations, numerical solvers and more. It is used extensively in this project to perform matrix operations and transformations.
+4. AprilTag: This is a visual fiducial system popular for robotics research.
+5. [JSON for Modern C++](https://github.com/nlohmann/json): A C++ library for reading and writing JSON files. It is used to read the predefined waypoints from JSON files. 
+
+The project also requires a drone equipped with a tracking camera, and an AprilTag attached to the bucket configuration as shown in figure 1 above. 
+
+## Installation and Usage
+
+The installation process begins by cloning the repository and installing the dependencies.
+
+The usage process involves setting up the drone and the ROS environment, launching the ROS node for this project, and then taking off with the drone. Once the drone spots an AprilTag, switch the drone to `offboard` mode, then it will automatically start navigating towards the predefined waypoints. The process can be monitored through the ROS logs or a separate ROS node that visualizes the drone's trajectory.
+
+To use the software, first clone the repository and navigate into it:
+
+```bash
+git clone https://github.com/amashry/nist-autonomous-inspection.git
+cd nist_autonomous_inspection
+```
+
+After installing the dependencies, build the project:
+
+```bash
+catkin_make
+```
+Then, source the workspace's setup file and launch the project using the launch file. 
+```bash
+source devel/setup.bash
+```
+You can now launch the ROS node:
+
+```bash
+roslaunch launch/indoor.launch
+```
 
 ## Project Structure
 
@@ -50,12 +86,17 @@ The "drone_is_approximately_at_offset" function checks if the drone's configurat
 
 Each bucket alignment is represented by a unique AprilTag. The bucket configurations are stored in JSON files inside the `config` directory, and handled by the `BucketConfiguration` class. Each configuration specifies the name of the bucket alignment and an offset matrix.
 
-For example, the "GROUND" bucket alignment is represented by the following configuration:
+For example, one of the buckets in the "GROUND" bucket alignment is represented by the following configuration:
 
 ```json
 {
-    "name": "GROUND",
-    "offset": [ /* offset matrix */ ]
+    "name": "bucket1a",
+    "offset": [
+        -0.626168, -0.779510, 0.024069, 0.504049, 
+        -0.779751, 0.625586, -0.025125, 0.206124, 
+        0.004528, -0.034500, -0.999546, -0.42000, 
+        0.000000, 0.000000, 0.000000, 1.000000
+    ]
 }
 ```
 
@@ -89,7 +130,7 @@ The pose in the inertial frame is then published and used by the PX4 autopilot f
 
 - Implement a search routine for the drone to navigate a predefined area of interest.
 - Allow the drone to switch between the search and inspection routines dynamically.
-- Implement the custom YOLOv5 model for detecting objects within the buckets during the inspection routine.
+- Integrate adaptive path planning for the drone based on the detection. 
 
 ## Acknowledgments
 
@@ -97,10 +138,10 @@ A big thank you to [Zach Bortoff](https://github.com/zborffs) for his significan
 
 ## References
 
-- [AprilTag 3](https://github.com/AprilRobotics/ap
-
-riltag)
+- [CustomYOLOv5-NIST-Buckets-VOXL-tflite](https://github.com/amashry/CustomYOLOv5-NIST-Buckets-VOXL-tflite)
+- [AprilTag 3](https://github.com/AprilRobotics/apriltag)
+- [Apriltag_ros](http://wiki.ros.org/apriltag_ros)
 - [PX4 Autopilot](https://github.com/PX4/PX4-Autopilot)
 - [MAVROS](https://github.com/mavlink/mavros)
-- [Custom YOLOv5 Model](https://github.com/<your-github>/<your-repo>)
-
+- [JSON](https://github.com/nlohmann/json)
+- [VOXL](https://docs.modalai.com/)
