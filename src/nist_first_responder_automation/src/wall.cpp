@@ -9,6 +9,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+#include <std_msgs/String.h>
 #include "utils.hpp"
 #include "bucket_configuration.hpp"
 
@@ -19,6 +20,9 @@ geometry_msgs::PoseStamped geo_msg_pose_stamped_drone;
 bool geo_msg_pose_stamped_drone_data_in = 0;
 bool geo_msg_pose_stamped_apriltag_data_in = 0;
 const double PUBLISHING_RATE_HZ = 20.0; // in units of Hz
+// Declare a global variable to keep track of the tag_id
+std::string current_tag_id = "-1";
+
 
 // the "1" indicates "1 second". This global variable defines the maximum number of iterations of the while-loop
 // until we will no longer accept that we are currently seeing the apriltag.
@@ -80,6 +84,10 @@ void callback_pose_inertial_body(const geometry_msgs::PoseStamped::ConstPtr& geo
     geo_msg_pose_stamped_drone_data_in = 1;  // set to true, since we must have received the data to be in this function
 }
 
+void callback_taginfo(const std_msgs::String::ConstPtr& msg){
+   current_tag_id = msg->data.c_str(); // get the tag_id as string
+}
+
 
 int main(int argc, char **argv) {
     // boilerplate code for node
@@ -92,9 +100,16 @@ int main(int argc, char **argv) {
     ros::Publisher pub_pose_inertial_apriltag = nh.advertise<geometry_msgs::PoseStamped>("/pose_inertial_apriltag", 10); // publish the pose in the inertial frame of the apriltag
     ros::Subscriber sub_pose_camera_apriltag = nh.subscribe<geometry_msgs::PoseStamped>("/tag_detections/tagpose", 1, callback_pose_camera_apriltag); // subscribe to the pose of the apriltag in the camera frame
     ros::Subscriber sub_pose_inertial_body = nh.subscribe <geometry_msgs::PoseStamped> ("/mavros/local_position/pose", 10, callback_pose_inertial_body); // subscribe to the pose of the drone in the inertial frame
+    ros::Subscriber sub_taginfo = nh.subscribe<std_msgs::String>("/tag_detections/taginfo", 10, callback_taginfo); // subscribe to the taginfo topic to save tag_id 
+
+    // Initial bucket configuration
+    std::string prev_tag_id = "-1";
+    std::unique_ptr<BucketConfiguration> bucket_configuration;
     
-    // Read the bucket configuration of the .json file we are passing in, and set the current bucket to the first bucket in the list of buckets in the .json file
-    BucketConfiguration bucket_configuration("/root/yoctohome/nist-autonomous-inspection/config/WALL.json");
+    // bucket_configuration.reset(new BucketConfiguration("/root/yoctohome/nist-autonomous-inspection/config/0.json"));
+    
+    // // Read the bucket configuration of the .json file we are passing in, and set the current bucket to the first bucket in the list of buckets in the .json file
+    // BucketConfiguration bucket_configuration("/root/yoctohome/nist-autonomous-inspection/config/WALL.json");
 
     // Declare relevant poses / frames as homogeneous transformations (which are represented in code as Eigen::Matrix4d)
     Eigen::Matrix4d H_body_apriltag; // This is the pose of the apriltag in the body frame
@@ -102,7 +117,7 @@ int main(int argc, char **argv) {
     Eigen::Matrix4d H_inertial_offset; // this is the pose of the desired position of the drone in the inertial frame
 
     // Set the publishing rate of THIS node... the setpoint publishing rate MUST be faster than 2Hz (for autopilot not to ignore mavros)
-    ros::Rate rate(PUBLISHING_RATE_HZ);
+    ros::Rate rate(PUBLISHING_RATE_HZ); 
 
     // define the static fields of the "PositionTarget" struct
     mavros_msgs::PositionTarget desired_pose_inertial_body;
@@ -116,6 +131,8 @@ int main(int argc, char **argv) {
     bool received_apriltag_and_drone_pose_recently{false}; // TRUE if we have gotten both an apriltag pose and a drone pose "recently". FALSE otherwise.
     bool have_seen_apriltag_at_least_once{false}; // TRUE if we have seen the apriltag one or more times. FALSE otherwise
     while (ros::ok()) {
+        
+        ros::spinOnce();
 
         // if the "seq" field of the geometry_msgs::PoseStamped object for the apriltag in the camera frame
         // is NOT equal to the previous "seq" field received from that topic, then we must be currently seeing the apriltag
@@ -137,6 +154,36 @@ int main(int argc, char **argv) {
             // that we have lost sight of the apriltag.
             geo_msg_pose_stamped_apriltag_data_in = 0; // set this number to false
         }
+
+        
+        // If a new apriltag is detected, update the bucket configuration
+        if (current_tag_id != prev_tag_id) {
+            prev_tag_id = current_tag_id; //update the prev_tag_id 
+            std::string json_file = std::string(current_tag_id) + std::string(".json");
+            std::cout << "Loading config file: " << "../../config/" + json_file + ".json" << std::endl;
+            bucket_configuration.reset(new BucketConfiguration(std::string("/root/yoctohome/nist-autonomous-inspection/config/") + json_file));
+            }
+
+        if (!bucket_configuration) {
+            // If there's no valid bucket configuration, skip the rest of the loop
+            std::string json_file = std::string("1") + std::string(".json");
+            bucket_configuration.reset(new BucketConfiguration(std::string("/root/yoctohome/nist-autonomous-inspection/config/") + json_file));
+        }
+
+
+        // // Check if current_tag_id has been updated
+        // if (current_tag_id == "0") {
+        //     // Load GROUND.json
+        //     ROS_INFO_STREAM("Currently Inspecting GROUND Alignmnet...");
+        //     bucket_configuration.loadConfig("/root/yoctohome/nist-autonomous-inspection/config/GROUND.json");
+     
+
+        // } else if (current_tag_id == "1") {
+        //     // Load WALL.json
+        //     ROS_INFO_STREAM("Currently Inspecting WALL Alignmnet...");
+        //     bucket_configuration.loadConfig("/root/yoctohome/nist-autonomous-inspection/config/WALL.json");
+        // }
+
   
         // if we have received both apriltag pose data recently AND drone pose data recenently, then
         // set "received_apriltag_and_drone_pose_recently" to TRUE. otherwise set it to FALSE
@@ -184,10 +231,10 @@ int main(int argc, char **argv) {
         }
 
         // Determine the desired pose of the drone so that it has the desired offset between itself and the apriltag
-        Eigen::Matrix4d H_offset_apriltag = bucket_configuration.get_current_bucket_offset();
+        Eigen::Matrix4d H_offset_apriltag = bucket_configuration->get_current_bucket_offset();
         H_inertial_offset = H_inertial_apriltag * H_offset_apriltag.inverse();
 
-        ROS_INFO_STREAM("Currently on bucket " << bucket_configuration.get_current_bucket_name());
+        ROS_INFO_STREAM("Currently on bucket " << bucket_configuration->get_current_bucket_name());
 
         // Publish the pose of the apriltag in the inertial ("map") frame to "/tag_detections/tagpose_inertial"
         geometry_msgs::PoseStamped apriltag_inertial_pub_data = homogeneous_tf_to_geo_msg_pose_stamped(H_inertial_apriltag);
@@ -227,10 +274,10 @@ int main(int argc, char **argv) {
         // video of the bucket, so move on.
         if (number_of_iterations_at_bucket_i == MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I) {
             number_of_iterations_at_bucket_i = 0; // reset the counter
-            bucket_configuration.increment_bucket_index(); // go to the next bucket.
+            bucket_configuration->increment_bucket_index(); // go to the next bucket.
         }
 
-        ros::spinOnce();
+        // ros::spinOnce();
         rate.sleep();
     }
 

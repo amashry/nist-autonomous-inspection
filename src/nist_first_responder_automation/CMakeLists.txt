@@ -75,11 +75,11 @@ target_include_directories(NFRA-lib PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_B
 target_link_libraries(NFRA-lib ${catkin_LIBRARIES})
 
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(NFRA_node src/project.cpp)
+## add_executable(NFRA_node src/project.cpp)
 add_executable(NFRA_node_wall src/wall.cpp)
 add_executable(generate_waypoints_node src/generate_waypoints.cpp)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(NFRA_node ${catkin_LIBRARIES} NFRA-lib)
+## target_link_libraries(NFRA_node ${catkin_LIBRARIES} NFRA-lib)
 target_link_libraries(NFRA_node_wall ${catkin_LIBRARIES} NFRA-lib)
 target_link_libraries(generate_waypoints_node ${catkin_LIBRARIES})
