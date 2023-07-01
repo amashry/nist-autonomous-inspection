@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     ros::Subscriber sub_pose_inertial_body = nh.subscribe <geometry_msgs::PoseStamped> ("/mavros/local_position/pose", 10, callback_pose_inertial_body); // subscribe to the pose of the drone in the inertial frame
     
     // Read the bucket configuration of the .json file we are passing in, and set the current bucket to the first bucket in the list of buckets in the .json file
-    BucketConfiguration bucket_configuration("/root/yoctohome/nist_first_responder_automation/config/WALL.json");
+    BucketConfiguration bucket_configuration("/root/yoctohome/nist-autonomous-inspection/config/GROUND.json");
 
     // Declare relevant poses / frames as homogeneous transformations (which are represented in code as Eigen::Matrix4d)
     Eigen::Matrix4d H_body_apriltag; // This is the pose of the apriltag in the body frame
