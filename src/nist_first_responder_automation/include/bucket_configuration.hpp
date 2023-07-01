@@ -12,6 +12,8 @@ private:
     std::vector<std::string> bucket_names_;
     std::vector<Eigen::Matrix4d> bucket_offsets_;
 
+    std::vector<bool> bucket_inspected_; // new member to track inspected state of each bucket
+
     std::size_t current_bucket_index_;
 
 public:
@@ -27,6 +29,10 @@ public:
         number_of_buckets_ = buckets.size();
         bucket_names_.reserve(number_of_buckets_);
         bucket_offsets_.reserve(number_of_buckets_);
+
+        // Initialize the inspected state of all buckets to false
+        bucket_inspected_.resize(number_of_buckets_, false);
+
 
         // for each "bucket" object under "buckets", extract the name and the offset matrix into relevant member variables
         for (auto& bucket : buckets.items()) {
@@ -59,6 +65,30 @@ public:
     Eigen::Matrix4d get_current_bucket_offset() {
         return bucket_offsets_[current_bucket_index_];
     }
+
+    // method to check if the current bucket has been inspected
+    bool is_current_bucket_inspected() {
+        return bucket_inspected_[current_bucket_index_];
+    }
+
+    // method to mark the current bucket as inspected
+    void mark_current_bucket_as_inspected() {
+        bucket_inspected_[current_bucket_index_] = true;
+    }
+
+    // method to check if all buckets have been inspected
+    bool are_all_buckets_inspected() {
+        // return false as soon as a bucket is found that has not been inspected
+        for (bool inspected : bucket_inspected_) {
+            if (!inspected) {
+                return false;
+            }
+        }
+    
+        // if we made it through the loop, all buckets have been inspected
+        return true;
+    }
+
 };
 
 #endif //BUCKET_CONFIGURATION_HPP

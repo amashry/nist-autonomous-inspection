@@ -17,13 +17,18 @@
 // these variables contain the incoming pose data of the drone and the april tag (must be global so they can be used with callbacks)
 geometry_msgs::PoseStamped geo_msg_pose_stamped_apriltag;
 geometry_msgs::PoseStamped geo_msg_pose_stamped_drone;
+
+std::vector<mavros_msgs::PositionTarget> search_waypoints; // waypoints for search 
+bool FINISHED_SEARCHING{false}; // bool variable to check if we finished search
+
 bool geo_msg_pose_stamped_drone_data_in = 0;
 bool geo_msg_pose_stamped_apriltag_data_in = 0;
-const double PUBLISHING_RATE_HZ = 20.0; // in units of Hz
+
 // Declare a global variable to keep track of the tag_id
 std::string current_tag_id = "-1";
 
 
+// << CONSTANT VARIABLES >>
 // the "1" indicates "1 second". This global variable defines the maximum number of iterations of the while-loop
 // until we will no longer accept that we are currently seeing the apriltag.
 const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RATE_HZ * 0.25);
@@ -35,10 +40,11 @@ const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ
 // tolerances for knowing whether we have reached the desired configuration
 const double YAW_TOLERANCE_RAD = 3.14 / 180.0 * 15; // roughly 15 degrees, but represented in units of radians
 const double POSITION_COMPONENT_TOLERANCE_M = 0.10; // 10 centimeters, but represented in units of meters
+const double POSITION_SEARCH_TOLERANCE_M = 0.15; // 20 centimeters -> tolerance in search waypoints
+
 
 // the maximum yaw rate we ever want to command in units of rad/s
 const double MAX_YAW_RATE_RAD = 3.14 / 180.0 * 25.0; // roughly 25 degrees per second, but represented in units of radians per second 
-// </global variables>
 
 
 /**
@@ -123,16 +129,44 @@ int main(int argc, char **argv) {
     mavros_msgs::PositionTarget desired_pose_inertial_body;
     desired_pose_inertial_body.coordinate_frame = 1; // this must be set to '1' for ineritial control
     desired_pose_inertial_body.type_mask = desired_pose_inertial_body.IGNORE_VX | desired_pose_inertial_body.IGNORE_VY | desired_pose_inertial_body.IGNORE_VZ | desired_pose_inertial_body.IGNORE_AFZ | desired_pose_inertial_body.IGNORE_AFY | desired_pose_inertial_body.IGNORE_AFX | desired_pose_inertial_body.IGNORE_YAW;
+    
+
+    // Define the desired search params for waypoint generation function
+    double length = 4.0, width = 3.0;
+    double altitude = 0.8;
+    int interval = 4;
+    int search_time_sec = 60;
+    
+    generate_search_waypoints(length, width, altitude, interval, search_time_sec);
+    // Use the getter function to access the waypoints
+    search_waypoints = get_search_waypoints();
+
 
     // define some loop parameters that will be updated in the loop
+    int current_wp_index = 0; // set current search waypoint to keep track of the index
     int number_of_iterations_since_last_saw_apriltag = 0; // number of iterations of the following while-loop in which we have seen the apriltag
     unsigned previous_apriltag_seq_number{0}; // equal to the most recent "seq" field of the "geometry_msgs::PoseStamped" struct containing apriltag pose information, in which we actually saw the apriltag.
     int number_of_iterations_at_bucket_i{0}; // number of iterations of the following while-loop in which we have been approximately in the desired configuration to see bucket "i"
     bool received_apriltag_and_drone_pose_recently{false}; // TRUE if we have gotten both an apriltag pose and a drone pose "recently". FALSE otherwise.
     bool have_seen_apriltag_at_least_once{false}; // TRUE if we have seen the apriltag one or more times. FALSE otherwise
+    bool INSPECTION_MODE_ON{false}; 
+    
+    
     while (ros::ok()) {
         
         ros::spinOnce();
+
+        // you might need to change this if instead of a while loop  
+        while (!drone_is_approximately_at_search_waypoint(search_waypoints[current_wp_index],geo_msg_pose_stamped_drone,POSITION_SEARCH_TOLERANCE_M)
+                                                        && !INSPECTION_MODE_ON){
+            // keep publishing the waypoint until you get at the waypoint 
+            pub_mavros_setpoint_raw_local.publish(search_waypoints[current_wp_index]);
+            // ROS_INFO_STREAM("Current Waypoint is = \n" << search_waypoints[current_wp_index]);
+            ROS_INFO_STREAM("CURRENTLY AT SEARCH WAYPOINT: " << current_wp_index);
+            ros::spinOnce();
+            rate.sleep();
+        }
+
 
         // if the "seq" field of the geometry_msgs::PoseStamped object for the apriltag in the camera frame
         // is NOT equal to the previous "seq" field received from that topic, then we must be currently seeing the apriltag
@@ -164,25 +198,12 @@ int main(int argc, char **argv) {
             bucket_configuration.reset(new BucketConfiguration(std::string("/root/yoctohome/nist-autonomous-inspection/config/") + json_file));
             }
 
+        // Test what happens if you ignore this if cond'n 
         if (!bucket_configuration) {
             // If there's no valid bucket configuration, skip the rest of the loop
             std::string json_file = std::string("1") + std::string(".json");
             bucket_configuration.reset(new BucketConfiguration(std::string("/root/yoctohome/nist-autonomous-inspection/config/") + json_file));
         }
-
-
-        // // Check if current_tag_id has been updated
-        // if (current_tag_id == "0") {
-        //     // Load GROUND.json
-        //     ROS_INFO_STREAM("Currently Inspecting GROUND Alignmnet...");
-        //     bucket_configuration.loadConfig("/root/yoctohome/nist-autonomous-inspection/config/GROUND.json");
-     
-
-        // } else if (current_tag_id == "1") {
-        //     // Load WALL.json
-        //     ROS_INFO_STREAM("Currently Inspecting WALL Alignmnet...");
-        //     bucket_configuration.loadConfig("/root/yoctohome/nist-autonomous-inspection/config/WALL.json");
-        // }
 
   
         // if we have received both apriltag pose data recently AND drone pose data recenently, then
@@ -205,22 +226,82 @@ int main(int argc, char **argv) {
         Eigen::Matrix4d H_camera_body; // formerly H_M_B
         H_camera_body << 0,-1,0,0,-0.707,0,-0.707, 0, 0.707, 0, -0.707, 0, 0, 0, 0, 1;        
 
-        if (received_apriltag_and_drone_pose_recently) {
+        if (received_apriltag_and_drone_pose_recently && !bucket_configuration->are_all_buckets_inspected()) {
             // we must have received an apriltag measurement and a drone position measurement in this iteration...
-            // let's save the apriltag position in the inertial frame to a global variable.
+            // the current apriltag must be new
+
+            // Now let's raise the Inspection Routine flag
+            INSPECTION_MODE_ON = true; 
+
+            // update flag that apriltag has been detected once 
             have_seen_apriltag_at_least_once = true;
 
             // Determine the pose of the apriltag in the body frame
             H_body_apriltag = H_camera_body.inverse() * H_camera_apriltag;
 
             // Determine the pose of the april tag in the local inertial frame
+            // let's save the apriltag position in the inertial frame to a global variable.
             H_inertial_apriltag = H_inertial_body * H_body_apriltag;
 
             // Print the pose of the apriltag in the body-frame
             // ROS_INFO_STREAM("Currently seeing apriltag"); // print out position?
+
+            // Determine the desired pose of the drone so that it has the desired offset between itself and the apriltag
+            Eigen::Matrix4d H_offset_apriltag = bucket_configuration->get_current_bucket_offset();
+            H_inertial_offset = H_inertial_apriltag * H_offset_apriltag.inverse();
+
+            ROS_INFO_STREAM("Currently on bucket " << bucket_configuration->get_current_bucket_name());
+
+            // Publish the pose of the apriltag in the inertial ("map") frame to "/tag_detections/tagpose_inertial"
+            geometry_msgs::PoseStamped apriltag_inertial_pub_data = homogeneous_tf_to_geo_msg_pose_stamped(H_inertial_apriltag);
+            apriltag_inertial_pub_data.header.frame_id = "map";
+            apriltag_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
+            pub_pose_inertial_apriltag.publish(apriltag_inertial_pub_data);
+
+            // Publish the desired pose of the drone in the inertial ("map") frame to "/desired_position"
+            geometry_msgs::PoseStamped desired_inertial_pub_data = homogeneous_tf_to_geo_msg_pose_stamped(H_inertial_offset);
+            desired_inertial_pub_data.header.frame_id = "map";
+            desired_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
+            pub_pose_inertial_body_desired.publish(desired_inertial_pub_data);
+
+            // publish the desired pose and yawrate to /mavros/setpoint_raw/local
+            // desired_pose_inertial_body.header.stamp = ros::Time::now();
+            desired_pose_inertial_body.position.x = H_inertial_offset(0,3);
+            desired_pose_inertial_body.position.y = H_inertial_offset(1,3);
+            desired_pose_inertial_body.position.z = H_inertial_offset(2,3);
+            desired_pose_inertial_body.yaw_rate = (float)determine_yaw_rate(H_inertial_body, H_inertial_offset, YAW_TOLERANCE_RAD, MAX_YAW_RATE_RAD);
+            pub_mavros_setpoint_raw_local.publish(desired_pose_inertial_body);
+
+            if (std::abs(desired_pose_inertial_body.yaw_rate) < 0.000001 ) {
+                ROS_INFO_STREAM("STOP YAWING");
+            } else if (desired_pose_inertial_body.yaw_rate < 0) {
+                ROS_INFO_STREAM("YAW CLOCKWISE");
+            } else {
+                ROS_INFO_STREAM("YAW COUNTERCLOCKWISE");
+            }
+
+            // increment a counter for every iteration of this while-loop in which the drone is approximately at the desired setpoint.
+            if (drone_is_approximately_at_offset(H_inertial_body, H_inertial_offset, YAW_TOLERANCE_RAD, POSITION_COMPONENT_TOLERANCE_M)) {
+                number_of_iterations_at_bucket_i++;
+            }
+
+            // if the counter accounting for the number of iterations of this while-loop in which the drone has been approximately
+            // at the desired setpoint is equal to the maximum number of iterations, then that means we have gotten a pretty good
+            // video of the bucket, so move on.
+            if (number_of_iterations_at_bucket_i == MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I) {
+                number_of_iterations_at_bucket_i = 0; // reset the counter
+                bucket_configuration->mark_current_bucket_as_inspected();
+                bucket_configuration->increment_bucket_index(); // go to the next bucket.
+            }
+
+            if (bucket_configuration->are_all_buckets_inspected()) {
+                INSPECTION_MODE_ON = false;
+            }
+            
+        
         } else if (!have_seen_apriltag_at_least_once) {
             // if we reached this point, that means we have never seen the april tag!
-            ROS_INFO_STREAM("Don't know where apriltag is");
+            ROS_INFO_STREAM("Don't know where apriltag is yet");
         } else {
             // if we reached this point, that means, we are not seeing the apriltag right now AND we have seen the 
             // apriltag in the past.
@@ -230,51 +311,27 @@ int main(int argc, char **argv) {
             // ROS_INFO_STREAM("Last known position of apriltag:"); // print out position?
         }
 
-        // Determine the desired pose of the drone so that it has the desired offset between itself and the apriltag
-        Eigen::Matrix4d H_offset_apriltag = bucket_configuration->get_current_bucket_offset();
-        H_inertial_offset = H_inertial_apriltag * H_offset_apriltag.inverse();
 
-        ROS_INFO_STREAM("Currently on bucket " << bucket_configuration->get_current_bucket_name());
-
-        // Publish the pose of the apriltag in the inertial ("map") frame to "/tag_detections/tagpose_inertial"
-        geometry_msgs::PoseStamped apriltag_inertial_pub_data = homogeneous_tf_to_geo_msg_pose_stamped(H_inertial_apriltag);
-        apriltag_inertial_pub_data.header.frame_id = "map";
-        apriltag_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
-        pub_pose_inertial_apriltag.publish(apriltag_inertial_pub_data);
-
-        // Publish the desired pose of the drone in the inertial ("map") frame to "/desired_position"
-        geometry_msgs::PoseStamped desired_inertial_pub_data = homogeneous_tf_to_geo_msg_pose_stamped(H_inertial_offset);
-        desired_inertial_pub_data.header.frame_id = "map";
-        desired_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
-        pub_pose_inertial_body_desired.publish(desired_inertial_pub_data);
-
-        // publish the desired pose and yawrate to /mavros/setpoint_raw/local
-        desired_pose_inertial_body.header.stamp = ros::Time::now();
-        desired_pose_inertial_body.position.x = H_inertial_offset(0,3);
-        desired_pose_inertial_body.position.y = H_inertial_offset(1,3);
-        desired_pose_inertial_body.position.z = H_inertial_offset(2,3);
-        desired_pose_inertial_body.yaw_rate = (float)determine_yaw_rate(H_inertial_body, H_inertial_offset, YAW_TOLERANCE_RAD, MAX_YAW_RATE_RAD);
-        pub_mavros_setpoint_raw_local.publish(desired_pose_inertial_body);
-
-        if (std::abs(desired_pose_inertial_body.yaw_rate) < 0.000001 ) {
-            ROS_INFO_STREAM("STOP YAWING");
-        } else if (desired_pose_inertial_body.yaw_rate < 0) {
-            ROS_INFO_STREAM("YAW CLOCKWISE");
-        } else {
-            ROS_INFO_STREAM("YAW COUNTERCLOCKWISE");
+        // if current_wp_index reaches the end of waypoints, reset it to home
+        if (current_wp_index >= search_waypoints.size()-1){
+            current_wp_index = 0;
+            FINISHED_SEARCHING = true; 
         }
 
-        // increment a counter for every iteration of this while-loop in which the drone is approximately at the desired setpoint.
-        if (drone_is_approximately_at_offset(H_inertial_body, H_inertial_offset, YAW_TOLERANCE_RAD, POSITION_COMPONENT_TOLERANCE_M)) {
-            number_of_iterations_at_bucket_i++;
+        if (!FINISHED_SEARCHING && !INSPECTION_MODE_ON)
+        {
+            current_wp_index++;
         }
 
-        // if the counter accounting for the number of iterations of this while-loop in which the drone has been approximately
-        // at the desired setpoint is equal to the maximum number of iterations, then that means we have gotten a pretty good
-        // video of the bucket, so move on.
-        if (number_of_iterations_at_bucket_i == MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I) {
-            number_of_iterations_at_bucket_i = 0; // reset the counter
-            bucket_configuration->increment_bucket_index(); // go to the next bucket.
+
+        while (FINISHED_SEARCHING && !INSPECTION_MODE_ON)
+        {
+            // keep hovering at home position 
+            pub_mavros_setpoint_raw_local.publish(search_waypoints[current_wp_index]);
+            ROS_INFO_STREAM("Home position waypoint = \n" << search_waypoints[current_wp_index]);
+            ROS_INFO_STREAM("Returned Home: " << current_wp_index);
+            ros::spinOnce();
+            rate.sleep();
         }
 
         // ros::spinOnce();
