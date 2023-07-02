@@ -139,7 +139,17 @@ https://github.com/amashry/nist-autonomous-inspection/assets/98168605/b1151bd4-e
 
 - Implement a search routine for the drone to navigate a predefined area of interest.
 - Allow the drone to switch between the search and inspection routines dynamically.
-- Integrate adaptive path planning for the drone based on the detection. 
+- Integrate adaptive path planning for the drone based on the detection.
+
+## Improvements 
+1. calculate yaw angle at current position to publish search waypoints at the correct YAW Angle
+2. Optimize the search and inspection time.
+3. Fix the case when it's hovering and cannot see the apriltag because it keeps yawing in place
+
+## BIG IMPROVEMENTS 
+1. BIG IMPROVEMENT IS TO GET THE APRILTAG OUT OF THE INSPECTION ROUTINE !!!! THINK OF SAVING THE APRIL TAG POSE IN THE INERTIAL FRAME ONCE IT"S BEEN SEEN AND THEN CALCULATE THE PUBLISHED OFFSET BASED ON THE DESIRED OFFSET LOADED FROM CONFIG FILE AND APRIL TAG POSE IN THE INERTIAL FRAME 
+2. INTEGRATE THE DETECTION OF THE BUCKETS IN THE LOOP TO GO TO THE NEXT BUCKET ONCE THE BUCKET IS IN GOOD FRAME AND COULD CLEARLY BE SEEN 
+
 
 ## Acknowledgments
 
