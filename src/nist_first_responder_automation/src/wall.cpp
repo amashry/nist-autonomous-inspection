@@ -35,12 +35,12 @@ const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RA
 
 // the "8" indicates "8 seconds". This global variable defines the maximum number of iterations of the while-loop
 // until we should proceed to moving to the next bucket.
-const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ * 5;
+const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ * 2;
 
 // tolerances for knowing whether we have reached the desired configuration
 const double YAW_TOLERANCE_RAD = 3.14 / 180.0 * 15; // roughly 15 degrees, but represented in units of radians
 const double POSITION_COMPONENT_TOLERANCE_M = 0.10; // 10 centimeters, but represented in units of meters
-const double POSITION_SEARCH_TOLERANCE_M = 0.15; // 20 centimeters -> tolerance in search waypoints
+const double POSITION_SEARCH_TOLERANCE_M = 0.20; // 20 centimeters -> tolerance in search waypoints
 
 
 // the maximum yaw rate we ever want to command in units of rad/s
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     double length = 4.0, width = 3.0;
     double altitude = 0.8;
     int interval = 4;
-    int search_time_sec = 60;
+    int search_time_sec = 30;
     
     generate_search_waypoints(length, width, altitude, interval, search_time_sec);
     // Use the getter function to access the waypoints
@@ -199,11 +199,11 @@ int main(int argc, char **argv) {
             }
 
         // Test what happens if you ignore this if cond'n 
-        if (!bucket_configuration) {
-            // If there's no valid bucket configuration, skip the rest of the loop
-            std::string json_file = std::string("1") + std::string(".json");
-            bucket_configuration.reset(new BucketConfiguration(std::string("/root/yoctohome/nist-autonomous-inspection/config/") + json_file));
-        }
+        // if (!bucket_configuration) {
+        //     // If there's no valid bucket configuration, skip the rest of the loop
+        //     std::string json_file = std::string("1") + std::string(".json");
+        //     bucket_configuration.reset(new BucketConfiguration(std::string("/root/yoctohome/nist-autonomous-inspection/config/") + json_file));
+        // }
 
   
         // if we have received both apriltag pose data recently AND drone pose data recenently, then
@@ -302,11 +302,14 @@ int main(int argc, char **argv) {
         } else if (!have_seen_apriltag_at_least_once) {
             // if we reached this point, that means we have never seen the april tag!
             ROS_INFO_STREAM("Don't know where apriltag is yet");
-        } else {
+        } else if (INSPECTION_MODE_ON) 
+        
+        { 
             // if we reached this point, that means, we are not seeing the apriltag right now AND we have seen the 
             // apriltag in the past.
             
-
+            pub_mavros_setpoint_raw_local.publish(desired_pose_inertial_body);
+            ROS_INFO_STREAM("LOST SIGHT OF AT --> HOVERING");
             // Print the pose of the apriltag in the body-frame
             // ROS_INFO_STREAM("Last known position of apriltag:"); // print out position?
         }
