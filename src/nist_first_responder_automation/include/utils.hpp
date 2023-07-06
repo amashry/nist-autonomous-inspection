@@ -24,6 +24,9 @@ enum Bucket {
 };
 
 // Function declarations
+std::vector<Eigen::Vector3d> reject_outliers(const std::vector<Eigen::Vector3d>& translations); 
+Eigen::Matrix4d bestPose(const std::vector<Eigen::Matrix4d>& poses);
+
 void generate_search_waypoints(double length, double width, double altitude, int interval, int search_time_sec);
 std::vector<mavros_msgs::PositionTarget> get_search_waypoints();
 bool drone_is_approximately_at_search_waypoint(const mavros_msgs::PositionTarget waypoint, 

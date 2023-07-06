@@ -68,9 +68,9 @@ void generate_search_waypoints(double length, double width, double altitude, int
         waypoint.type_mask = mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
                              mavros_msgs::PositionTarget::IGNORE_VZ + mavros_msgs::PositionTarget::IGNORE_AFX +
                              mavros_msgs::PositionTarget::IGNORE_AFY + mavros_msgs::PositionTarget::IGNORE_AFZ +
-                             mavros_msgs::PositionTarget::FORCE + mavros_msgs::PositionTarget::IGNORE_YAW +
-                             mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
-        waypoint.yaw = PI/2;
+                             mavros_msgs::PositionTarget::FORCE + mavros_msgs::PositionTarget::IGNORE_YAW; 
+        
+        // waypoint.yaw = PI/2;
         waypoint.position.z = z;
         waypoint.position.y = y;
 
@@ -275,4 +275,81 @@ double homogeneous_tf_to_yaw(const Eigen::Matrix4d& homogeneous_tf, bool verbose
     }
 
     return desired_euler_angles_3_2_1[0]; // i believe technically that we need to subtract pi from this, but doesn't really matter?
+}
+
+// Function to calculate the best pose out of multiple pose estimates 
+Eigen::Matrix4d bestPose(const std::vector<Eigen::Matrix4d>& poses) {
+    // Step 1: Create vectors to hold translation and rotation parts separately
+    std::vector<Eigen::Vector3d> translations;
+    std::vector<Eigen::Quaterniond> rotations;
+
+    for (const auto& H : poses) {
+        // split the 4x4 matrix into translation and rotation
+        Eigen::Vector3d translation = H.block<3, 1>(0, 3);
+        Eigen::Matrix3d rotation = H.block<3, 3>(0, 0);
+
+        translations.push_back(translation);
+        rotations.push_back(Eigen::Quaterniond(rotation));
+    }
+
+    // Step 2: Use outlier rejection for translations
+    translations = reject_outliers(translations);
+
+    // Step 3: Average translations
+    Eigen::Vector3d avg_translation = Eigen::Vector3d::Zero();
+    for (const auto& translation : translations) {
+        avg_translation += translation;
+    }
+    avg_translation /= translations.size();
+
+    // Step 4: Average rotations
+
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(4, 4);
+    for (const auto& rotation : rotations) {
+        Eigen::Vector4d q = rotation.coeffs();
+        Q += q * q.transpose();  // outer product
+    }
+
+    // normalization
+    Q /= rotations.size();
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(Q, Eigen::ComputeThinU);
+    Eigen::Vector4d avg_rotation_coeffs = svd.matrixU().col(0);
+    Eigen::Quaterniond avg_rotation(avg_rotation_coeffs(3), avg_rotation_coeffs(0), avg_rotation_coeffs(1), avg_rotation_coeffs(2));
+    avg_rotation.normalize();
+
+    // Step 5: Combine average translation and rotation into a 4x4 matrix
+    Eigen::Matrix4d avg_transform = Eigen::Matrix4d::Identity();
+    avg_transform.block<3, 1>(0, 3) = avg_translation;
+    avg_transform.block<3, 3>(0, 0) = avg_rotation.toRotationMatrix();
+
+    return avg_transform;
+}
+
+std::vector<Eigen::Vector3d> reject_outliers(const std::vector<Eigen::Vector3d>& translations) {
+    // compute the mean
+    Eigen::Vector3d mean = Eigen::Vector3d::Zero();
+    for (const auto& translation : translations) {
+        mean += translation;
+    }
+    mean /= translations.size();
+
+    // compute the standard deviation
+    Eigen::Vector3d std_dev = Eigen::Vector3d::Zero();
+    for (const auto& translation : translations) {
+        Eigen::Vector3d diff = translation - mean;
+        std_dev += diff.cwiseProduct(diff);
+    }
+    std_dev = (std_dev / translations.size()).cwiseSqrt();
+
+    // reject outliers
+    std::vector<Eigen::Vector3d> result;
+    for (const auto& translation : translations) {
+        Eigen::Vector3d z_score = (translation - mean).cwiseQuotient(std_dev);
+        if ((z_score.array().abs() < 2).all()) {  // here "2" represents the threshold for the z-score
+            result.push_back(translation);
+        }
+    }
+
+    return result;
 }
