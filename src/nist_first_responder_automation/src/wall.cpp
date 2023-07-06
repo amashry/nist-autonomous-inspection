@@ -31,11 +31,12 @@ std::string current_tag_id = "-1";
 // << CONSTANT VARIABLES >>
 // maximum number of Apriltag pose estimates in the inertial frame to be collected before letting go
 // I'm not sure of the correct value that should be used in here 
-const int MAX_NO_OF_AT_ESTIMATES = 15; 
+const int MAX_NO_OF_AT_ESTIMATES = 40; 
+const int MAX_NO_STABLE_EST = 5; 
 
 // the "1" indicates "1 second". This global variable defines the maximum number of iterations of the while-loop
 // until we will no longer accept that we are currently seeing the apriltag.
-const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RATE_HZ * 4);
+const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RATE_HZ * 3);
 
 // the "8" indicates "8 seconds". This global variable defines the maximum number of iterations of the while-loop
 // until we should proceed to moving to the next bucket.
@@ -172,6 +173,7 @@ int main(int argc, char **argv) {
     bool received_apriltag_and_drone_pose_recently{false}; // TRUE if we have gotten both an apriltag pose and a drone pose "recently". FALSE otherwise.
     bool have_seen_apriltag_at_least_once{false}; // TRUE if we have seen the apriltag one or more times. FALSE otherwise
     bool INSPECTION_MODE_ON{false}; 
+    bool flag_got_pose_estimate_apriltag{false}; 
     
     
     while (ros::ok()) {
@@ -243,35 +245,38 @@ int main(int argc, char **argv) {
         Eigen::Matrix4d H_camera_body; // formerly H_M_B
         H_camera_body << 0,-1,0,0,-0.707,0,-0.707, 0, 0.707, 0, -0.707, 0, 0, 0, 0, 1;        
 
-        Eigen::Matrix4d CURRENT_H_inertial_apriltag; 
+        Eigen::Matrix4d CURRENT_H_inertial_apriltag;
 
         // if the "seq" field of the geometry_msgs::PoseStamped object for the apriltag in the camera frame
         // is NOT equal to the previous "seq" field received from that topic, then we must be currently seeing the apriltag
         if (previous_apriltag_seq_number != geo_msg_pose_stamped_apriltag.header.seq 
-                                            && AT_poseEstimates.size() != MAX_NO_OF_AT_ESTIMATES
+                                            && !flag_got_pose_estimate_apriltag
                                             && !bucket_configuration->are_all_buckets_inspected())
         {
 
             // we reach this point iff we are currently seeing an apriltag that hasn't been inspected before
-            // and we still don't know its pose in the inertial frame 
+            // and we still don't know its pose in the inertial frame, which is determined based on the number of GOOD readings that
+            // were able to get and append to the vector of good pose estimates 
             previous_apriltag_seq_number = (unsigned)geo_msg_pose_stamped_apriltag.header.seq; // update the previous "seq" with the current "seq"
             number_of_iterations_since_last_saw_apriltag = 0; // make sure we reset this variable to 0
             INSPECTION_MODE_ON = true; // turn the inspection mode on
 
-            pub_mavros_setpoint_raw_local.publish(search_waypoints[current_wp_index]);
-            ROS_INFO_STREAM("AT DETECTED --> HOVERING AND ANALYZING ITS POSE!");
+            pub_mavros_setpoint_raw_local.publish(search_waypoints[current_wp_index-1]);
+            ROS_INFO_STREAM("AT DETECTED >>>>>> ANALYZING ITS POSE!");
 
             // Determine the pose of the apriltag in the body frame
             H_body_apriltag = H_camera_body.inverse() * H_camera_apriltag;
             // Determine the current pose of the april tag in the local inertial frame
             // let's save the apriltag position in the inertial frame to a global variable.
             CURRENT_H_inertial_apriltag = H_inertial_body * H_body_apriltag;
+            AT_poseEstimates.push_back(CURRENT_H_inertial_apriltag);
 
             number_of_iterations_since_last_estimate++; 
 
-            if (number_of_iterations_since_last_estimate % 4 == 0){
+            if (number_of_iterations_since_last_estimate % 5 == 0){
                 // update the previously collected estimate every 5 readings
-                PREV_H_inertial_apriltag = CURRENT_H_inertial_apriltag; 
+                PREV_H_inertial_apriltag = CURRENT_H_inertial_apriltag;
+
                 good_estimate_recorded_i = 0; // reset the counter for good estimates  
             }
 
@@ -281,39 +286,41 @@ int main(int argc, char **argv) {
                 // compare the prev and current pose estimates for the april_tag in the inertial frame
                 // we reach this iff the current and prev estimates are approximately equal
                 good_estimate_recorded_i++;
-                ROS_INFO_STREAM("I GOT A GOOD ESTIMATE AND THEY ARE MATCHING!!!!");
+                ROS_INFO_STREAM("I GOT A GOOD ESTIMATE AND IT'S MATCHING PREV ONE!!!!");
             }
 
-            // append the estimate iff it's been repeated within the threshold for 5 times
-            if (good_estimate_recorded_i == 2)
+            // // append the estimate iff it's been stable within the threshold for 5 times
+            if (good_estimate_recorded_i == MAX_NO_STABLE_EST)
             {
-                AT_poseEstimates.push_back(PREV_H_inertial_apriltag); // prev estimate repeated 5 times? pretty good, then apend it  
-                good_estimate_recorded_i = 0; // reset it back to zero to re count again 
+                H_inertial_apriltag = PREV_H_inertial_apriltag; // stable for MAX_NO_STABLE_EST readings, good enough to take it!
+                flag_got_pose_estimate_apriltag = true; // got the pose, so outta here 
+
+                number_of_iterations_since_last_estimate = 0;  // reset it to 0 becuase we are done here 
             }
 
-            if (AT_poseEstimates.size() == MAX_NO_OF_AT_ESTIMATES)
+            if (AT_poseEstimates.size() == MAX_NO_OF_AT_ESTIMATES && good_estimate_recorded_i != MAX_NO_STABLE_EST)
             {
-                // we reach this point iff we got the max number of good estimates as defined above
+                // we reach this point iff we got the max number of good estimates as defined above and we still don't have 
+                // a stable reading for MAX_NO_STABLE_EST readings. 
 
                 // implement here the algorithm required to reject the noise and take the best estimate out of 
                 // all the recorded estimates of Homogeneous transformations for the april tag pose in the inertial frame, 
                 // and then save this best estimate to the global variabe H_inertial_apriltag
-                H_inertial_apriltag = bestPose(AT_poseEstimates);
-                ROS_INFO_STREAM("Best Pose: " << H_inertial_apriltag); 
-
-                // for now I'll just take the latest reading
-                // H_inertial_apriltag = PREV_H_inertial_apriltag; 
-
+                H_inertial_apriltag = bestPose(AT_poseEstimates); // calculate the avg and reject outliers from all readings we got 
+                flag_got_pose_estimate_apriltag = true; // got the pose, so outta here 
+                
                 number_of_iterations_since_last_estimate = 0;  
             }
         
-        } else if (INSPECTION_MODE_ON && AT_poseEstimates.size() != MAX_NO_OF_AT_ESTIMATES && !bucket_configuration->are_all_buckets_inspected())
+        } else if (INSPECTION_MODE_ON && !flag_got_pose_estimate_apriltag && !bucket_configuration->are_all_buckets_inspected())
         {
-            // we reach this point iff we lost sight of the april tag BUT we have seen it at least once before, and therefore the inspection mode is still ON
+            // we reach this point iff we lost sight of the april tag BUT we have seen it at least once before
+            // and therefore the inspection mode is still ON
+            
             ++number_of_iterations_since_last_saw_apriltag; // increment the counter. we will use this counter to infer how long it was since the last time we saw the apriltag
 
-            pub_mavros_setpoint_raw_local.publish(search_waypoints[current_wp_index]);
-            ROS_INFO_STREAM("LOST SIGHT OF AT --> HOVERING FOR 2 SEC");
+            pub_mavros_setpoint_raw_local.publish(search_waypoints[current_wp_index - 1]);
+            ROS_INFO_STREAM("LOST SIGHT OF AT --> HOVERING FOR SHORT TIME!");
 
             if (number_of_iterations_since_last_saw_apriltag == MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG) {
                 // if we have reached this point, that means that we have not seen the apriltag in 
@@ -321,6 +328,8 @@ int main(int argc, char **argv) {
                 // at the top of the file to be [ARBITRARY NUMBER OF SECONDS] * [UPDATE FREQUENCY]. So in effect, this number,
                 // "MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG", defines the number of seconds before we should start to report
                 // that we have lost sight of the apriltag.
+                
+                ROS_INFO_STREAM("SWITCHING BACK TO SEARCH!!!!");
                 geo_msg_pose_stamped_apriltag_data_in = 0; // set this number to false
                 INSPECTION_MODE_ON = false; // get back to the search routine if completely lost sight of the april tag 
             }
@@ -332,7 +341,9 @@ int main(int argc, char **argv) {
         // received_apriltag_and_drone_pose_recently = geo_msg_pose_stamped_apriltag_data_in && geo_msg_pose_stamped_drone_data_in;
 
 
-        if (AT_poseEstimates.size() == MAX_NO_OF_AT_ESTIMATES && !bucket_configuration->are_all_buckets_inspected()) {
+        // CHANGE that very long condition to a flag later. flag_I_got_the_pose_estimate 
+        if (flag_got_pose_estimate_apriltag && !bucket_configuration->are_all_buckets_inspected()) {
+            
             // we must have computed an apriltag measurement and a drone position measurement in this iteration...
             // AND the current apriltag must be new
 
@@ -392,7 +403,9 @@ int main(int argc, char **argv) {
 
             if (bucket_configuration->are_all_buckets_inspected()) {
                 INSPECTION_MODE_ON = false;
-                AT_poseEstimates.clear();
+                flag_got_pose_estimate_apriltag = false; // reset it to false to estimate another apriltag 
+                good_estimate_recorded_i = 0; // reset to zero 
+                AT_poseEstimates.clear(); // clear all readings that we got from that apriltag, don't need it anymore voxl-px   
             }
             
         }
