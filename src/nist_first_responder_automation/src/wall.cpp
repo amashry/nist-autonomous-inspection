@@ -31,7 +31,7 @@ std::string current_tag_id = "-1";
 // << CONSTANT VARIABLES >>
 // maximum number of Apriltag pose estimates in the inertial frame to be collected before letting go
 // I'm not sure of the correct value that should be used in here 
-const int MAX_NO_OF_AT_ESTIMATES = 40; 
+const int MAX_NO_OF_AT_ESTIMATES = 30; 
 const int MAX_NO_STABLE_EST = 5; 
 
 // the "1" indicates "1 second". This global variable defines the maximum number of iterations of the while-loop
@@ -40,12 +40,12 @@ const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RA
 
 // the "8" indicates "8 seconds". This global variable defines the maximum number of iterations of the while-loop
 // until we should proceed to moving to the next bucket.
-const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ * 2;
+const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ * 1;
 
 // tolerances for knowing whether we have reached the desired configuration
-const double YAW_TOLERANCE_RAD = PI / 180.0 * 15; // roughly 15 degrees, but represented in units of radians
+const double YAW_TOLERANCE_RAD = PI / 180.0 * 20; // roughly 15 degrees, but represented in units of radians
 const double POSITION_COMPONENT_TOLERANCE_M = 0.10; // 10 centimeters, but represented in units of meters
-const double POSITION_SEARCH_TOLERANCE_M = 0.30; // 20 centimeters -> tolerance in search waypoints
+const double POSITION_SEARCH_TOLERANCE_M = 0.27; // 25 centimeters -> tolerance in search waypoints
 const double YAW_TOLERANCE_RAD_SEARCH = PI / 180.0 * 20; // roughly 15 degrees, but represented in units of radians
 
 
@@ -145,7 +145,7 @@ int main(int argc, char **argv) {
 
     // Define the desired search params for waypoint generation function
     double length = 4.0, width = 3.0;
-    double altitude = 1.0;
+    double altitude = 1.1;
     int interval = 4;
     int search_time_sec = 20;
 
