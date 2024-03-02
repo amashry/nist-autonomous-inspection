@@ -45,7 +45,7 @@ const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ
 // tolerances for knowing whether we have reached the desired configuration
 const double YAW_TOLERANCE_RAD = PI / 180.0 * 20; // roughly 15 degrees, but represented in units of radians
 const double POSITION_COMPONENT_TOLERANCE_M = 0.10; // 10 centimeters, but represented in units of meters
-const double POSITION_SEARCH_TOLERANCE_M = 0.30; // 25 centimeters -> tolerance in search waypoints
+const double POSITION_SEARCH_TOLERANCE_M = 0.20; // 25 centimeters -> tolerance in search waypoints
 const double YAW_TOLERANCE_RAD_SEARCH = PI / 180.0 * 20; // roughly 15 degrees, but represented in units of radians
 
 
