@@ -2,6 +2,102 @@
 
 
 /**
+ * returns true if the drone's position is equal (within predefined tolerance) to the desired waypoint position 
+*/
+bool drone_is_approximately_at_search_waypoint(const mavros_msgs::PositionTarget waypoint, 
+                                        const geometry_msgs::PoseStamped current_pose,
+                                        const double position_component_tolerance) 
+{
+    // extract position values from PositionTarget msgs and PoseStamped msgs 
+    double x_inertial_desired = waypoint.position.x;
+    double y_inertial_desired = waypoint.position.y; 
+    double z_inertial_desired = waypoint.position.z; 
+
+
+    double x_inertial_current = current_pose.pose.position.x;
+    double y_inertial_current = current_pose.pose.position.y;
+    double z_inertial_current = current_pose.pose.position.z;
+
+    // if the absolute value between the positions of the drone in the inertial frame and the desired waypoint in the inertial 
+    // frame are all less than some tolerance, then that means the drone is approximately at the reference point, so return true
+    bool x_within_tolerance = std::abs(x_inertial_desired - x_inertial_current) < position_component_tolerance;
+    bool y_within_tolerance = std::abs(y_inertial_desired - y_inertial_current) < position_component_tolerance;
+    bool z_within_tolerance = std::abs(z_inertial_desired - z_inertial_current) < position_component_tolerance;
+
+    // only return true if all of the abolute values are within the tolerances
+    // WE CAN PLAY WITH if we want to change drone search speed 
+    // I suggest to OR x,y with z because it's more important to maintain x,y 
+    // to follow the path, compared with puttin a hard constraint on the altitude 
+    return x_within_tolerance && y_within_tolerance && z_within_tolerance;
+}
+
+
+
+std::vector<mavros_msgs::PositionTarget> waypoints;
+/**
+ * brief Generates waypoints for a lawnmower-style search pattern.
+ * 
+ * param length Length of the search area. (ALONG Y AXIS OR NORTH for ENU frame)
+ * param width Width of the search area. (ALONG X AXIS OR EAST for ENU frame)
+ * param altitude Fixed Altitude at which the drone should fly.
+ * param interval Number of intervals between parallel lines. 
+ * param search_time_sec Time to cover the search area, in seconds.
+ * return void
+ */
+
+void generate_search_waypoints(double length, double width, double altitude, int interval, int search_time_sec){
+    // Define the number of steps
+    int num_of_steps = PUBLISHING_RATE_HZ * search_time_sec;
+
+    // Define the area limits here
+    double x0 = 0.0, y0 = 0.0, x_W = x0 + width, y_L = y0 + length;
+
+    // Fixed altitude
+    double z = altitude;
+
+    // Step size along x axis (EAST)
+    double step_size = (interval+1)*width / num_of_steps;
+
+    // Boolean to toggle direction
+    bool forward = true;
+
+    for (double y = y0; y <= y_L; y += length/interval){
+        mavros_msgs::PositionTarget waypoint;
+        waypoint.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+        
+        waypoint.type_mask = mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
+                             mavros_msgs::PositionTarget::IGNORE_VZ + mavros_msgs::PositionTarget::IGNORE_AFX +
+                             mavros_msgs::PositionTarget::IGNORE_AFY + mavros_msgs::PositionTarget::IGNORE_AFZ +
+                             mavros_msgs::PositionTarget::FORCE + mavros_msgs::PositionTarget::IGNORE_YAW; 
+        
+        // waypoint.yaw = PI/2;
+        waypoint.position.z = z;
+        waypoint.position.y = y;
+
+        // Generate waypoints
+        if (forward){
+            for (double x = x0; x <= x_W; x += step_size){
+                waypoint.position.x = x;
+                waypoints.push_back(waypoint);
+            }
+        } else {
+            for (double x = x_W; x >= x0; x -= step_size){
+                waypoint.position.x = x;
+                waypoints.push_back(waypoint);
+            }
+        }
+        
+        // Switch direction
+        forward = !forward;
+    }
+}
+
+std::vector<mavros_msgs::PositionTarget> get_search_waypoints() {
+    return waypoints;
+}
+
+
+/**
  * represents the homogeneous transform as a string for readibility
 */
 std::string homogeneous_tf_to_string(const Eigen::Matrix4d& H) {
@@ -179,4 +275,81 @@ double homogeneous_tf_to_yaw(const Eigen::Matrix4d& homogeneous_tf, bool verbose
     }
 
     return desired_euler_angles_3_2_1[0]; // i believe technically that we need to subtract pi from this, but doesn't really matter?
+}
+
+// Function to calculate the best pose out of multiple pose estimates 
+Eigen::Matrix4d bestPose(const std::vector<Eigen::Matrix4d>& poses) {
+    // Step 1: Create vectors to hold translation and rotation parts separately
+    std::vector<Eigen::Vector3d> translations;
+    std::vector<Eigen::Quaterniond> rotations;
+
+    for (const auto& H : poses) {
+        // split the 4x4 matrix into translation and rotation
+        Eigen::Vector3d translation = H.block<3, 1>(0, 3);
+        Eigen::Matrix3d rotation = H.block<3, 3>(0, 0);
+
+        translations.push_back(translation);
+        rotations.push_back(Eigen::Quaterniond(rotation));
+    }
+
+    // Step 2: Use outlier rejection for translations
+    translations = reject_outliers(translations);
+
+    // Step 3: Average translations
+    Eigen::Vector3d avg_translation = Eigen::Vector3d::Zero();
+    for (const auto& translation : translations) {
+        avg_translation += translation;
+    }
+    avg_translation /= translations.size();
+
+    // Step 4: Average rotations
+
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(4, 4);
+    for (const auto& rotation : rotations) {
+        Eigen::Vector4d q = rotation.coeffs();
+        Q += q * q.transpose();  // outer product
+    }
+
+    // normalization
+    Q /= rotations.size();
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(Q, Eigen::ComputeThinU);
+    Eigen::Vector4d avg_rotation_coeffs = svd.matrixU().col(0);
+    Eigen::Quaterniond avg_rotation(avg_rotation_coeffs(3), avg_rotation_coeffs(0), avg_rotation_coeffs(1), avg_rotation_coeffs(2));
+    avg_rotation.normalize();
+
+    // Step 5: Combine average translation and rotation into a 4x4 matrix
+    Eigen::Matrix4d avg_transform = Eigen::Matrix4d::Identity();
+    avg_transform.block<3, 1>(0, 3) = avg_translation;
+    avg_transform.block<3, 3>(0, 0) = avg_rotation.toRotationMatrix();
+
+    return avg_transform;
+}
+
+std::vector<Eigen::Vector3d> reject_outliers(const std::vector<Eigen::Vector3d>& translations) {
+    // compute the mean
+    Eigen::Vector3d mean = Eigen::Vector3d::Zero();
+    for (const auto& translation : translations) {
+        mean += translation;
+    }
+    mean /= translations.size();
+
+    // compute the standard deviation
+    Eigen::Vector3d std_dev = Eigen::Vector3d::Zero();
+    for (const auto& translation : translations) {
+        Eigen::Vector3d diff = translation - mean;
+        std_dev += diff.cwiseProduct(diff);
+    }
+    std_dev = (std_dev / translations.size()).cwiseSqrt();
+
+    // reject outliers
+    std::vector<Eigen::Vector3d> result;
+    for (const auto& translation : translations) {
+        Eigen::Vector3d z_score = (translation - mean).cwiseQuotient(std_dev);
+        if ((z_score.array().abs() < 2).all()) {  // here "2" represents the threshold for the z-score
+            result.push_back(translation);
+        }
+    }
+
+    return result;
 }
