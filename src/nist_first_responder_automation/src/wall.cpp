@@ -145,7 +145,7 @@ int main(int argc, char **argv) {
 
     // Define the desired search params for waypoint generation function
     double length = 4.5, width = 3.5;
-    double altitude = 1.1;
+    double altitude = 0.9;
     int interval = 3;
     int search_time_sec = 20;
 
