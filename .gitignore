@@ -4,3 +4,4 @@ devel/
 devel/*
 .catkin_workspace
 source_me
+.vscode
