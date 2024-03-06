@@ -36,7 +36,7 @@ const int MAX_NO_STABLE_EST = 5;
 
 // the "1" indicates "1 second". This global variable defines the maximum number of iterations of the while-loop
 // until we will no longer accept that we are currently seeing the apriltag.
-const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RATE_HZ * 4);
+const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RATE_HZ * 5);
 
 // the "8" indicates "8 seconds". This global variable defines the maximum number of iterations of the while-loop
 // until we should proceed to moving to the next bucket.
@@ -45,6 +45,8 @@ const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ
 // tolerances for knowing whether we have reached the desired configuration
 const double YAW_TOLERANCE_RAD = PI / 180.0 * 15; // roughly 15 degrees, but represented in units of radians
 const double POSITION_COMPONENT_TOLERANCE_M = 0.10; // 10 centimeters, but represented in units of meters
+const double AT_ESTIMATE_YAW_TOLERANCE_RAD = PI / 180.0 * 15; // roughly 15 degrees, but represented in units of radians
+const double AT_ESTIMATE_POSITION_COMPONENT_TOLERANCE_M = 0.15; // 10 centimeters, but represented in units of meters
 const double POSITION_SEARCH_TOLERANCE_M = 0.20; // 25 centimeters -> tolerance in search waypoints
 const double YAW_TOLERANCE_RAD_SEARCH = PI / 180.0 * 20; // roughly 15 degrees, but represented in units of radians
 
@@ -282,7 +284,7 @@ int main(int argc, char **argv) {
 
             // change criteria for this function later 
             if (drone_is_approximately_at_offset(PREV_H_inertial_apriltag, CURRENT_H_inertial_apriltag,
-                                                YAW_TOLERANCE_RAD, POSITION_COMPONENT_TOLERANCE_M)){
+                                                AT_ESTIMATE_YAW_TOLERANCE_RAD, AT_ESTIMATE_POSITION_COMPONENT_TOLERANCE_M)){
                 // compare the prev and current pose estimates for the april_tag in the inertial frame
                 // we reach this iff the current and prev estimates are approximately equal
                 good_estimate_recorded_i++;
