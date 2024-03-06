@@ -55,13 +55,13 @@ void generate_search_waypoints(double length, double width, double altitude, int
     // Fixed altitude
     double z = altitude;
 
-    // Step size along x axis (EAST)
+    // Step size along x axis (EAST OR TO THE RIGHT OF THE DRONE)
     double step_size = (interval+1)*width / num_of_steps;
 
     // Boolean to toggle direction
     bool forward = true;
 
-    for (double y = y0; y <= y_L; y += length/interval){
+    for (double y = y0; y <= y_L; y += 0.5*(length/interval)){
         mavros_msgs::PositionTarget waypoint;
         waypoint.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
         
