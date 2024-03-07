@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
     bool have_seen_apriltag_at_least_once{false}; // TRUE if we have seen the apriltag one or more times. FALSE otherwise
     bool INSPECTION_MODE_ON{false}; 
     bool flag_got_pose_estimate_apriltag{false}; 
-    
+    bool finished_calculated_pose_for_apriltag_at_least_for_one_tag{false};  // (delete later)
     
     while (ros::ok()) {
         
@@ -296,6 +296,8 @@ int main(int argc, char **argv) {
             {
                 H_inertial_apriltag = PREV_H_inertial_apriltag; // stable for MAX_NO_STABLE_EST readings, good enough to take it!
                 flag_got_pose_estimate_apriltag = true; // got the pose, so outta here 
+                // this is just to keep publishing the apriltag pose in the intertial frame for data viz (delete later)
+                finished_calculated_pose_for_apriltag_at_least_for_one_tag = true; 
 
                 number_of_iterations_since_last_estimate = 0;  // reset it to 0 becuase we are done here 
             }
@@ -311,6 +313,9 @@ int main(int argc, char **argv) {
                 H_inertial_apriltag = bestPose(AT_poseEstimates); // calculate the avg and reject outliers from all readings we got 
                 flag_got_pose_estimate_apriltag = true; // got the pose, so outta here 
                 
+                // this is just to keep publishing the apriltag pose in the intertial frame for data viz (delete later)
+                finished_calculated_pose_for_apriltag_at_least_for_one_tag = true; 
+
                 number_of_iterations_since_last_estimate = 0;  
             }
         
@@ -342,6 +347,19 @@ int main(int argc, char **argv) {
         // set "received_apriltag_and_drone_pose_recently" to TRUE. otherwise set it to FALSE
         // received_apriltag_and_drone_pose_recently = geo_msg_pose_stamped_apriltag_data_in && geo_msg_pose_stamped_drone_data_in;
 
+
+        // this loop is just to keep publishing the stream of apriltag poses throughout the whole mission 
+        // For example, if it only finishes calculation for one tag's pose, it will publish this pose for the rest of the mission
+        // if it finds another one, it will jump mid-mission to publishing the new pose estimate of the new detected tag (delete later)
+        if (finished_calculated_pose_for_apriltag_at_least_for_one_tag)
+        {
+            // Publish the pose of the apriltag in the inertial ("map") frame to "/tag_detections/tagpose_inertial"
+            geometry_msgs::PoseStamped apriltag_inertial_pub_data = homogeneous_tf_to_geo_msg_pose_stamped(H_inertial_apriltag);
+            apriltag_inertial_pub_data.header.frame_id = "map";
+            apriltag_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
+            pub_pose_inertial_apriltag.publish(apriltag_inertial_pub_data);
+
+        } 
 
         // CHANGE that very long condition to a flag later. flag_I_got_the_pose_estimate 
         if (flag_got_pose_estimate_apriltag && !bucket_configuration->are_all_buckets_inspected()) {
