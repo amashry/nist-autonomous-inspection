@@ -61,7 +61,7 @@ void generate_search_waypoints(double length, double width, double altitude, int
     // Boolean to toggle direction
     bool forward = true;
 
-    for (double y = y0; y <= y_L; y += 0.5*(length/interval)){
+    for (double y = y0; y <= y_L; y += length/interval){
         mavros_msgs::PositionTarget waypoint;
         waypoint.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
         
