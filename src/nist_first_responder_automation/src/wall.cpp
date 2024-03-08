@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
     ros::Publisher pub_mavros_setpoint_raw_local = nh.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 10); // publish the desired position and yawrate to this topic for the autopilot
     ros::Publisher pub_pose_inertial_body_desired = nh.advertise<geometry_msgs::PoseStamped>("/pose_inertial_body_desired", 10); // publish the pose in the inertial frame where we will command the drone to go
     ros::Publisher pub_pose_inertial_apriltag = nh.advertise<geometry_msgs::PoseStamped>("/pose_inertial_apriltag", 10); // publish the pose in the inertial frame of the apriltag
+    ros::Publisher pub_first_pose_apriltag = nh.advertise<geometry_msgs::PoseStamped>("/first_detected_apriltag_pose_estimate", 10); // publish first detected pose of the AT for comparison (delete later)
     ros::Subscriber sub_pose_camera_apriltag = nh.subscribe<geometry_msgs::PoseStamped>("/tag_detections/tagpose", 1, callback_pose_camera_apriltag); // subscribe to the pose of the apriltag in the camera frame
     ros::Subscriber sub_pose_inertial_body = nh.subscribe <geometry_msgs::PoseStamped> ("/mavros/local_position/pose", 10, callback_pose_inertial_body); // subscribe to the pose of the drone in the inertial frame
     ros::Subscriber sub_taginfo = nh.subscribe<std_msgs::String>("/tag_detections/taginfo", 10, callback_taginfo); // subscribe to the taginfo topic to save tag_id 
@@ -177,6 +178,7 @@ int main(int argc, char **argv) {
     bool INSPECTION_MODE_ON{false}; 
     bool flag_got_pose_estimate_apriltag{false}; 
     bool finished_calculated_pose_for_apriltag_at_least_for_one_tag{false};  // (delete later)
+    Eigen::Matrix4d first_estimate_of_detected_apriltag_matrix; // delete later (just to publish the first noisy estimate)
     
     while (ros::ok()) {
         
@@ -273,6 +275,9 @@ int main(int argc, char **argv) {
             CURRENT_H_inertial_apriltag = H_inertial_body * H_body_apriltag;
             AT_poseEstimates.push_back(CURRENT_H_inertial_apriltag);
 
+            // save the first estimate in the global pose variable to be published for viz (delete later)
+            first_estimate_of_detected_apriltag_matrix = AT_poseEstimates[0]; 
+
             number_of_iterations_since_last_estimate++; 
 
             if (number_of_iterations_since_last_estimate % 5 == 0){
@@ -359,6 +364,11 @@ int main(int argc, char **argv) {
             apriltag_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
             pub_pose_inertial_apriltag.publish(apriltag_inertial_pub_data);
 
+            // publish the first pose you got once AT was detected to compare it vs filtered estimate (delete later)
+            geometry_msgs::PoseStamped first_estimate_of_detected_apriltag_pose = homogeneous_tf_to_geo_msg_pose_stamped(first_estimate_of_detected_apriltag_matrix);
+            first_estimate_of_detected_apriltag_pose.header.frame_id = "map";
+            first_estimate_of_detected_apriltag_pose.header.stamp = geo_msg_pose_stamped_drone.header.stamp; 
+            pub_first_pose_apriltag.publish(first_estimate_of_detected_apriltag_pose);
         } 
 
         // CHANGE that very long condition to a flag later. flag_I_got_the_pose_estimate 
