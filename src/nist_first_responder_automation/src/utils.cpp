@@ -71,8 +71,8 @@ void generate_search_waypoints(double length, double width, double altitude, int
         
         // mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
         // waypoint.yaw = PI/2;
-        waypoint.velocity.x = 1; 
-        waypoint.velocity.y = 1;
+        waypoint.velocity.x = 0.1; 
+        waypoint.velocity.y = 0.1;
         waypoint.position.z = z;
         waypoint.position.y = y;
 
@@ -91,12 +91,12 @@ void generate_search_waypoints(double length, double width, double altitude, int
 
                 // Generate waypoints
         if (forward){
-            for (double x = x0; x <= x_W; x += x_W/3){
+            for (double x = x0; x <= x_W; x += x_W/10){
                 waypoint.position.x = x;
                 waypoints.push_back(waypoint);
             }
         } else {
-            for (double x = x_W; x >= x0; x -= x_W/3){
+            for (double x = x_W; x >= x0; x -= x_W/10){
                 waypoint.position.x = x;
                 waypoints.push_back(waypoint);
             }
