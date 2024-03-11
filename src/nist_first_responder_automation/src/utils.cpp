@@ -65,11 +65,11 @@ void generate_search_waypoints(double length, double width, double altitude, int
         mavros_msgs::PositionTarget waypoint;
         waypoint.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
         
-        waypoint.type_mask = mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
-                             mavros_msgs::PositionTarget::IGNORE_VZ + mavros_msgs::PositionTarget::IGNORE_AFX +
+        waypoint.type_mask = mavros_msgs::PositionTarget::IGNORE_VZ + mavros_msgs::PositionTarget::IGNORE_AFX +
                              mavros_msgs::PositionTarget::IGNORE_AFY + mavros_msgs::PositionTarget::IGNORE_AFZ +
                              mavros_msgs::PositionTarget::FORCE + mavros_msgs::PositionTarget::IGNORE_YAW; 
         
+        // mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
         // waypoint.yaw = PI/2;
         waypoint.velocity.x = 1; 
         waypoint.velocity.y = 1;
