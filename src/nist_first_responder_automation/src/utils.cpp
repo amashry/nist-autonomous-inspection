@@ -65,14 +65,15 @@ void generate_search_waypoints(double length, double width, double altitude, int
         mavros_msgs::PositionTarget waypoint;
         waypoint.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
         
-        waypoint.type_mask = mavros_msgs::PositionTarget::IGNORE_VZ + mavros_msgs::PositionTarget::IGNORE_AFX +
+        waypoint.type_mask = mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
+                             mavros_msgs::PositionTarget::IGNORE_VZ + mavros_msgs::PositionTarget::IGNORE_AFX +
                              mavros_msgs::PositionTarget::IGNORE_AFY + mavros_msgs::PositionTarget::IGNORE_AFZ +
                              mavros_msgs::PositionTarget::FORCE + mavros_msgs::PositionTarget::IGNORE_YAW; 
         
-        // mavros_msgs::PositionTarget::IGNORE_VX + mavros_msgs::PositionTarget::IGNORE_VY +
+        // 
         // waypoint.yaw = PI/2;
-        waypoint.velocity.x = 0.1; 
-        waypoint.velocity.y = 0.1;
+        // waypoint.velocity.x = 0.1; 
+        // waypoint.velocity.y = 0.1;
         waypoint.position.z = z;
         waypoint.position.y = y;
 
@@ -91,12 +92,12 @@ void generate_search_waypoints(double length, double width, double altitude, int
 
                 // Generate waypoints
         if (forward){
-            for (double x = x0; x <= x_W; x += x_W/10){
+            for (double x = x0; x <= x_W; x += x_W/15){
                 waypoint.position.x = x;
                 waypoints.push_back(waypoint);
             }
         } else {
-            for (double x = x_W; x >= x0; x -= x_W/10){
+            for (double x = x_W; x >= x0; x -= x_W/15){
                 waypoint.position.x = x;
                 waypoints.push_back(waypoint);
             }

@@ -40,11 +40,11 @@ const int MAX_NUMBER_OF_ITERATIONS_SINCE_LAST_SAW_APRILTAG = (int)(PUBLISHING_RA
 
 // the "8" indicates "8 seconds". This global variable defines the maximum number of iterations of the while-loop
 // until we should proceed to moving to the next bucket.
-const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ * 3;
+const int MAX_NUMBER_OF_ITERATIONS_LOOKING_AT_BUCKET_I = (int)PUBLISHING_RATE_HZ * 4;
 
 // tolerances for knowing whether we have reached the desired configuration
-const double YAW_TOLERANCE_RAD = PI / 180.0 * 8; // roughly 15 degrees, but represented in units of radians
-const double POSITION_COMPONENT_TOLERANCE_M = 0.08; // 10 centimeters, but represented in units of meters
+const double YAW_TOLERANCE_RAD = PI / 180.0 * 7; // roughly 15 degrees, but represented in units of radians
+const double POSITION_COMPONENT_TOLERANCE_M = 0.07; // 10 centimeters, but represented in units of meters
 const double AT_ESTIMATE_YAW_TOLERANCE_RAD = PI / 180.0 * 20; // roughly 15 degrees, but represented in units of radians
 const double AT_ESTIMATE_POSITION_COMPONENT_TOLERANCE_M = 0.10; // 10 centimeters, but represented in units of meters
 const double POSITION_SEARCH_TOLERANCE_M = 0.10; // 25 centimeters -> tolerance in search waypoints
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
     ros::Publisher pub_mavros_setpoint_raw_local = nh.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 10); // publish the desired position and yawrate to this topic for the autopilot
     ros::Publisher pub_pose_inertial_body_desired = nh.advertise<geometry_msgs::PoseStamped>("/pose_inertial_body_desired", 10); // publish the pose in the inertial frame where we will command the drone to go
     ros::Publisher pub_pose_inertial_apriltag = nh.advertise<geometry_msgs::PoseStamped>("/pose_inertial_apriltag", 10); // publish the pose in the inertial frame of the apriltag
-    ros::Publisher pub_first_pose_apriltag = nh.advertise<geometry_msgs::PoseStamped>("/first_detected_apriltag_pose_estimate", 10); // publish first detected pose of the AT for comparison (delete later)
+    ros::Publisher pub_current_pose_apriltag = nh.advertise<geometry_msgs::PoseStamped>("/current_detected_apriltag_pose_estimate", 10); // publish first detected pose of the AT for comparison (delete later)
     ros::Subscriber sub_pose_camera_apriltag = nh.subscribe<geometry_msgs::PoseStamped>("/tag_detections/tagpose", 1, callback_pose_camera_apriltag); // subscribe to the pose of the apriltag in the camera frame
     ros::Subscriber sub_pose_inertial_body = nh.subscribe <geometry_msgs::PoseStamped> ("/mavros/local_position/pose", 10, callback_pose_inertial_body); // subscribe to the pose of the drone in the inertial frame
     ros::Subscriber sub_taginfo = nh.subscribe<std_msgs::String>("/tag_detections/taginfo", 10, callback_taginfo); // subscribe to the taginfo topic to save tag_id 
@@ -179,7 +179,8 @@ int main(int argc, char **argv) {
     bool flag_got_pose_estimate_apriltag{false}; 
     bool finished_calculated_pose_for_apriltag_at_least_for_one_tag{false};  // (delete later)
     Eigen::Matrix4d first_estimate_of_detected_apriltag_matrix; // delete later (just to publish the first noisy estimate)
-    
+    Eigen::Matrix4d CURRENT_H_inertial_apriltag = Eigen::Matrix4d::Identity();
+
     while (ros::ok()) {
         
         ros::spinOnce();
@@ -249,7 +250,6 @@ int main(int argc, char **argv) {
         Eigen::Matrix4d H_camera_body; // formerly H_M_B
         H_camera_body << 0,-1,0,0,-0.707,0,-0.707, 0, 0.707, 0, -0.707, 0, 0, 0, 0, 1;        
 
-        Eigen::Matrix4d CURRENT_H_inertial_apriltag;
 
         // if the "seq" field of the geometry_msgs::PoseStamped object for the apriltag in the camera frame
         // is NOT equal to the previous "seq" field received from that topic, then we must be currently seeing the apriltag
@@ -364,12 +364,14 @@ int main(int argc, char **argv) {
             apriltag_inertial_pub_data.header.stamp = geo_msg_pose_stamped_drone.header.stamp;
             pub_pose_inertial_apriltag.publish(apriltag_inertial_pub_data);
 
-            // publish the first pose you got once AT was detected to compare it vs filtered estimate (delete later)
-            geometry_msgs::PoseStamped first_estimate_of_detected_apriltag_pose = homogeneous_tf_to_geo_msg_pose_stamped(first_estimate_of_detected_apriltag_matrix);
-            first_estimate_of_detected_apriltag_pose.header.frame_id = "map";
-            first_estimate_of_detected_apriltag_pose.header.stamp = geo_msg_pose_stamped_drone.header.stamp; 
-            pub_first_pose_apriltag.publish(first_estimate_of_detected_apriltag_pose);
         } 
+
+        // publish the first pose you got once AT was detected to compare it vs filtered estimate (delete later)
+        geometry_msgs::PoseStamped current_estimate_of_detected_apriltag_pose = homogeneous_tf_to_geo_msg_pose_stamped(CURRENT_H_inertial_apriltag);
+        current_estimate_of_detected_apriltag_pose.header.frame_id = "map";
+        current_estimate_of_detected_apriltag_pose.header.stamp = geo_msg_pose_stamped_drone.header.stamp; 
+        pub_current_pose_apriltag.publish(current_estimate_of_detected_apriltag_pose);
+
 
         // CHANGE that very long condition to a flag later. flag_I_got_the_pose_estimate 
         if (flag_got_pose_estimate_apriltag && !bucket_configuration->are_all_buckets_inspected()) {
