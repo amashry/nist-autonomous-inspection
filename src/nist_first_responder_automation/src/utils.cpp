@@ -71,21 +71,37 @@ void generate_search_waypoints(double length, double width, double altitude, int
                              mavros_msgs::PositionTarget::FORCE + mavros_msgs::PositionTarget::IGNORE_YAW; 
         
         // waypoint.yaw = PI/2;
+        waypoint.velocity.x = 1; 
+        waypoint.velocity.y = 1;
         waypoint.position.z = z;
         waypoint.position.y = y;
 
         // Generate waypoints
+        // if (forward){
+        //     for (double x = x0; x <= x_W; x += step_size){
+        //         waypoint.position.x = x;
+        //         waypoints.push_back(waypoint);
+        //     }
+        // } else {
+        //     for (double x = x_W; x >= x0; x -= step_size){
+        //         waypoint.position.x = x;
+        //         waypoints.push_back(waypoint);
+        //     }
+        // }
+
+                // Generate waypoints
         if (forward){
-            for (double x = x0; x <= x_W; x += step_size){
+            for (double x = x0; x <= x_W; x += x_W/3){
                 waypoint.position.x = x;
                 waypoints.push_back(waypoint);
             }
         } else {
-            for (double x = x_W; x >= x0; x -= step_size){
+            for (double x = x_W; x >= x0; x -= x_W/3){
                 waypoint.position.x = x;
                 waypoints.push_back(waypoint);
             }
         }
+
         
         // Switch direction
         forward = !forward;
